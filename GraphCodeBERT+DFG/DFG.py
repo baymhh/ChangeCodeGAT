@@ -664,14 +664,14 @@ def create_matrix(df_path):
                     temp3 = df_path[t1][1]
                     index3 = t1
                     if temp3 == nn[0]:
-                        matrix[index3][index2] = 1
+                        #matrix[index3][index2] = 1
                         matrix[index2][index3] = 1
             elif nn[0] < temp2:
                 for t2 in range(0, index2):
                     temp3 = df_path[t2][1]
                     index3 = t2
                     if temp3 == nn[0]:
-                        matrix[index3][index2] = 1
+                        #matrix[index3][index2] = 1
                         # 增添
                         matrix[index2][index3] = 1
     return sp.csr_matrix(matrix)

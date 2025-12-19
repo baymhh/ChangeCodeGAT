@@ -160,7 +160,8 @@ def preprocess_adj(adj):
     mask = np.zeros((len(adj), max_length, 1))  # mask for padding
 
     for i in range(len(adj)):
-        adj_normalized = normalize_adj(adj[i])  # no self-loop
+        #adj_normalized = normalize_adj(adj[i])  # no self-loop
+        adj_normalized = adj[i]
         pad = max_length - adj_normalized.shape[0]  # padding for each epoch
         adj_normalized = np.pad(adj_normalized, ((0, pad), (0, pad)), mode='constant')
         mask[i, :adj[i].shape[0], :] = 1.

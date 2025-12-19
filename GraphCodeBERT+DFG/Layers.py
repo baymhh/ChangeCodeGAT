@@ -4,6 +4,107 @@ from torch.nn.parameter import Parameter
 import torch.nn.functional as F
 import math
 
+
+
+# GATv2Batch
+class GraphAttentionV2Layer(nn.Module):
+    def __init__(self, in_features: int, out_features: int, n_heads: int,
+        is_concat: bool = True,
+        dropout: float = 0.6,
+        leaky_relu_negative_slope: float = 0.2,
+        share_weights: bool = False):
+
+        super().__init__()
+
+        self.is_concat = is_concat
+        self.n_heads = n_heads
+        self.share_weights = share_weights
+
+        # 如果开启了拼接模式，要确认输出维度是注意力头数的整数倍
+        if is_concat:
+            assert out_features % n_heads == 0
+            # 单个注意力头的输出维度
+            self.n_hidden = out_features // n_heads
+        else:
+            # 如果未开启拼接模式，那就是平均模式，单头输出维度等于多头输出维度
+            self.n_hidden = out_features
+        # 线性层W1
+        self.linear_l = nn.Linear(in_features, self.n_hidden * n_heads, bias=False)
+        # 如果开启了共享权重，则W2用同样的权重
+        if share_weights:
+            self.linear_r = self.linear_l
+        else:
+            self.linear_r = nn.Linear(in_features, self.n_hidden * n_heads, bias=False)
+        # 计算注意力分数e
+        self.attn = nn.Linear(self.n_hidden, 1, bias=False)
+        # 激活函数
+        self.activation = nn.LeakyReLU(negative_slope=leaky_relu_negative_slope)
+        # softmax层，得到注意力
+        # dim=1在带批次的计算中应该改为dim=2
+        self.softmax = nn.Softmax(dim=2)
+        # dropout层
+        self.dropout = nn.Dropout(dropout)
+
+
+    def forward(self, h: torch.Tensor, adj_mat: torch.Tensor):
+        """
+        h:   [B, N, F_in]
+        adj: [B, N, N, H] or [B, N, N, 1]
+        """
+        # 获取节点个数
+        # 改为获取批次大小和节点个数
+        B, N, _ = h.shape
+        # 计算W1hi和W2hj
+        # 线性映射时考虑批次
+        g_l = self.linear_l(h).view(B, N, self.n_heads, self.n_hidden)
+        g_r = self.linear_r(h).view(B, N, self.n_heads, self.n_hidden)
+
+        # 计算W[hi||hj]，即W1hi+W2hj
+        #适配批处理
+        g_l_i = g_l.unsqueeze(2)  # [B, N, 1, H, d]
+        g_r_j = g_r.unsqueeze(1)  # [B, 1, N, H, d]
+
+        g_sum = g_l_i + g_r_j     # [B, N, N, H, d]
+
+
+        # 计算注意力得分eij
+        e = self.attn(self.activation(g_sum))
+
+        e = e.squeeze(-1)
+
+        # 验证邻接矩阵形状
+
+        # assert adj_mat.shape[0] == 1 or adj_mat.shape[0] == n_nodes
+        # assert adj_mat.shape[1] == 1 or adj_mat.shape[1] == n_nodes
+        # assert adj_mat.shape[2] == 1 or adj_mat.shape[2] == self.n_heads
+
+        # 根据邻接矩阵对注意力进行掩码
+        #改为多头适配
+        if adj_mat.dim() == 3:
+            # adj_mat [B,N,N] → 广播到 [B,N,N,H]，无需显式repeat
+            e = e.masked_fill(adj_mat.unsqueeze(-1) == 0, -1e9)
+        else:
+            e = e.masked_fill(adj_mat == 0, -1e9)
+
+
+        # 归一化得到最终注意力
+        a = self.softmax(e)
+
+        # 正则化
+        a = self.dropout(a)
+
+        # 计算每个头的最终输出
+        #适配批次
+        attn_res = torch.einsum('b i j h,b j h f -> b i h f', a, g_r)
+
+        # 整合多头
+        #适配批次
+        if self.is_concat:
+            return attn_res.reshape(B, N, self.n_heads * self.n_hidden)
+        else:
+            return attn_res.mean(dim=2)
+
+
 """Head for sentence-level classification tasks."""
 class PredictionClassification(nn.Module):
     def __init__(self, config, args, input_size=None, num_classes=2):
@@ -108,8 +209,9 @@ class GraphAttentionLayer(nn.Module):
 class GraphEmbedding(nn.Module):
     def __init__(self, feature_dim_size, hidden_size, dropout, act=nn.functional.relu):
         super(GraphEmbedding, self).__init__()
-        self.gnn = GraphConvolution(feature_dim_size, hidden_size, dropout, act=act)
+        #self.gnn = GraphConvolution(feature_dim_size, hidden_size, dropout, act=act)
         # self.graphAtt = GraphAttentionLayer(feature_dim_size, hidden_size, dropout=dropout, concat=True)
+        self.graphAttv2 = GraphAttentionV2Layer(feature_dim_size, hidden_size, n_heads=1, is_concat=True, dropout=0.1, leaky_relu_negative_slope=0.2, share_weights=False)
         self.out_dim = hidden_size
         self.soft_att = nn.Linear(hidden_size, 1).double()
         self.posEmb = SinusoidalPositionalEmbedding()
@@ -118,8 +220,9 @@ class GraphEmbedding(nn.Module):
 
     def forward(self, inputs, adj, mask):
         x = inputs
-        x = self.gnn(x, adj) * mask  # Residual Connection, can use a weighted sum
+        #x = self.gnn(x, adj) * mask  # Residual Connection, can use a weighted sum
         # x = self.graphAtt(x, adj) * mask
+        x = self.graphAttv2(x, adj) * mask
         # soft attention
         soft_att = torch.sigmoid(self.soft_att(x.double()).double())
         x = self.act(self.ln(x))
