@@ -162,6 +162,8 @@ def preprocess_adj(adj):
     for i in range(len(adj)):
         #adj_normalized = normalize_adj(adj[i])  # no self-loop
         adj_normalized = adj[i]
+        if isinstance(adj_normalized, (sp.csr_matrix, sp.csc_matrix, sp.lil_matrix)):
+            adj_normalized = adj_normalized.toarray()
         pad = max_length - adj_normalized.shape[0]  # padding for each epoch
         adj_normalized = np.pad(adj_normalized, ((0, pad), (0, pad)), mode='constant')
         mask[i, :adj[i].shape[0], :] = 1.
