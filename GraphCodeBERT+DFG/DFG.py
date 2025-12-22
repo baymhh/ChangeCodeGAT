@@ -659,21 +659,15 @@ def create_matrix(df_path):
             matrix[index2][index1] = 1
         nn = df_path[i][3]
         if nn:
-            if nn[0] >= temp2:
-                for t1 in range(index2, n):
-                    temp3 = df_path[t1][1]
-                    index3 = t1
-                    if temp3 == nn[0]:
-                        #matrix[index3][index2] = 1
-                        matrix[index2][index3] = 1
-            elif nn[0] < temp2:
-                for t2 in range(0, index2):
-                    temp3 = df_path[t2][1]
-                    index3 = t2
-                    if temp3 == nn[0]:
-                        #matrix[index3][index2] = 1
-                        # 增添
-                        matrix[index2][index3] = 1
+            for src_idx in nn:
+                if src_idx >= temp2:
+                    for t in range(index2, n):
+                        if df_path[t][1] == src_idx:
+                            matrix[index2][t] = 1
+                else:
+                    for t in range(0, index2):
+                        if df_path[t][1] == src_idx:
+                            matrix[index2][t] = 1
     return sp.csr_matrix(matrix)
 
 def create_node_features(df_path):
@@ -724,6 +718,41 @@ def find_node_cfg(test_root_node, total_number):
         total_number += 1
     return total_number, mask_cfg, mask_cfg_1
 
+
+
+EDGE_TYPE = {
+    'same': 1,
+    'from': 2,
+    'computedFrom': 3
+}
+def create_matrix_edge(df_path):
+    n = int(len(df_path))
+    matrix = np.zeros((n, n), dtype=np.float32)
+    temp1 = df_path[0][1]
+    index1 = 0
+    for i in range(0, n):
+        temp2 = df_path[i][1]
+        index2 = i
+        if temp2 != temp1:
+            temp1 = df_path[i][1]
+            index1 = i
+        if temp2 == temp1:
+            matrix[index1][index2] = float(EDGE_TYPE['same'])
+            matrix[index2][index1] = float(EDGE_TYPE['same'])
+        nn = df_path[i][3]
+        edge_kind = df_path[i][2]
+        if nn and edge_kind in EDGE_TYPE:
+            etype = float(EDGE_TYPE[edge_kind])
+            for src_idx in nn:
+                if src_idx >= temp2:
+                    for t in range(index2, n):
+                        if df_path[t][1] == src_idx:
+                            matrix[index2][t] = etype
+                else:
+                    for t in range(0, index2):
+                        if df_path[t][1] == src_idx:
+                            matrix[index2][t] = etype
+    return sp.csr_matrix(matrix)
 
 
 

@@ -9,6 +9,7 @@ import math
 # GATv2Batch
 class GraphAttentionV2Layer(nn.Module):
     def __init__(self, in_features: int, out_features: int, n_heads: int,
+                 edge_features: int,
                  is_concat: bool = True,
                  dropout: float = 0.6,
                  leaky_relu_negative_slope: float = 0.2,
@@ -32,13 +33,16 @@ class GraphAttentionV2Layer(nn.Module):
             self.linear_r = self.linear_l  # 共享权重则无需重复转
         else:
             self.linear_r = nn.Linear(in_features, self.n_hidden * n_heads, bias=False).double()
+
+        self.linear_e = nn.Linear(edge_features, self.n_hidden, bias=False).double()
+
         self.attn = nn.Linear(self.n_hidden, 1, bias=False).double()  # 注意力层也转double
 
         self.activation = nn.LeakyReLU(negative_slope=leaky_relu_negative_slope)
         self.softmax = nn.Softmax(dim=2)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, h: torch.Tensor, adj_mat: torch.Tensor):
+    def forward(self, h: torch.Tensor, adj_mat: torch.Tensor, edge_attr: torch.Tensor):
         """
         h:   [B, N, F_in]
         adj: [B, N, N, H] or [B, N, N, 1]
@@ -46,6 +50,7 @@ class GraphAttentionV2Layer(nn.Module):
         # ========== 简化：只需确保输入是double（可选，保险起见） ==========
         h = h.double()
         adj_mat = adj_mat.double()
+        edge_attr = edge_attr.double()
 
         B, N, _ = h.shape
         # 无需再给linear输出加.double()，因为参数已经是double，输出自然是double
@@ -54,7 +59,13 @@ class GraphAttentionV2Layer(nn.Module):
 
         g_l_i = g_l.unsqueeze(2)
         g_r_j = g_r.unsqueeze(1)
-        g_sum = g_l_i + g_r_j
+
+        e_ij = self.linear_e(edge_attr)
+        e_ij = e_ij.unsqueeze(3)
+
+
+
+        g_sum = g_l_i + g_r_j + e_ij
 
         # 注意力层参数是double，输出自然是double
         e = self.attn(self.activation(g_sum)).squeeze(-1)
@@ -188,11 +199,11 @@ class GraphEmbedding(nn.Module):
         self.ln = nn.Linear(hidden_size, hidden_size).double()
         self.act = act
 
-    def forward(self, inputs, adj, mask):
+    def forward(self, inputs, adj, mask, inputs_e):
         x = inputs
         #x = self.gnn(x, adj) * mask  # Residual Connection, can use a weighted sum
         # x = self.graphAtt(x, adj) * mask
-        x = self.graphAttv2(x, adj) * mask
+        x = self.graphAttv2(x, adj, inputs_e) * mask
         # soft attention
         soft_att = torch.sigmoid(self.soft_att(x.double()).double())
         x = self.act(self.ln(x))

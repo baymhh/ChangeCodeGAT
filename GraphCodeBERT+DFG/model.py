@@ -20,15 +20,17 @@ class GraphCodeBERT(nn.Module):
 
     def forward(self, inputs_ids=None, attn_mask=None, position_idx=None, labels=None):
         # build DFG
-        adj, x_feature = build_dfg(inputs_ids.cpu().detach().numpy(), self.w_embeddings, self.tokenizer)
+        adj, x_feature, x_feature_e = build_dfg(inputs_ids.cpu().detach().numpy(), self.w_embeddings, self.tokenizer)
         adj, adj_mask = preprocess_adj(adj)
         adj_feature = preprocess_features(x_feature)
+        adj_feature_e = preprocess_features_e(x_feature_e)
         adj = torch.from_numpy(adj)
         # print(adj.shape)
         adj_mask = torch.from_numpy(adj_mask)
         adj_feature = torch.from_numpy(adj_feature)
+        adj_feature_e = torch.from_numpy(adj_feature_e)
         # print(adj_feature.shape)
-        g_emb = self.graphEmb(adj_feature.to(device).double(), adj.to(device).double(), adj_mask.to(device).double())
+        g_emb = self.graphEmb(adj_feature.to(device).double(), adj.to(device).double(), adj_mask.to(device).double(), adj_feature_e.to(device).double())
         nodes_mask = position_idx.eq(0)
         token_mask = position_idx.ge(2)
 

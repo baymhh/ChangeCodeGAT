@@ -371,12 +371,14 @@ def index_to_code_token(index, code):
 def build_dfg(shuffle_doc_words_list, word_embeddings, tokenizer):
     x_adj = []
     x_feature = []
+    x_feature_e = []
     for i in range(len(shuffle_doc_words_list)):
         features = []
         doc_words = shuffle_doc_words_list[i]
         code = tokenizer.decode(doc_words, skip_special_tokens=True)
         df_path = create_dfs_print_matrix(code)
         adj = create_matrix(df_path)
+        dfg_feature_e = create_matrix_edge(df_path)
         dfg_feature = create_node_features(df_path)
         adj[adj > 1] = 1.
         x_adj.append(adj)
@@ -395,7 +397,35 @@ def build_dfg(shuffle_doc_words_list, word_embeddings, tokenizer):
             features.append(feature)
         x_feature.append(features)
 
-    return x_adj, x_feature
+        EDGE_TYPE = ['same', 'from', 'computedFrom']
+        edge_embeddings = {}
+        for edge_name in EDGE_TYPE:
+            token_id = tokenizer.encode(edge_name)[1:-1]  # 去掉 [CLS]/[SEP]
+            if len(token_id) > 1:
+                # 只取第一个 token
+                edge_embeddings[edge_name] = word_embeddings[token_id[0]]
+            elif len(token_id) == 1:
+                edge_embeddings[edge_name] = word_embeddings[token_id[0]]
+            else:
+                edge_embeddings[edge_name] = np.zeros(768)
+        N = dfg_feature_e.shape[0]
+        edge_feature_matrix = np.zeros((N, N, 768))  # 每条边的向量和节点嵌入维度一致
+
+        matrix_dense = dfg_feature_e.toarray()
+        for row in range(N):
+            for col in range(N):
+                val = int(matrix_dense[row, col])
+                if val == 0:
+                    edge_feature_matrix[row, col] = np.zeros(768)
+                elif val == 1:
+                    edge_feature_matrix[row, col] = edge_embeddings['same']
+                elif val == 2:
+                    edge_feature_matrix[row, col] = edge_embeddings['from']
+                elif val == 3:
+                    edge_feature_matrix[row, col] = edge_embeddings['computedFrom']
+        x_feature_e.append(edge_feature_matrix)
+
+    return x_adj, x_feature, x_feature_e
 
 def buildDFG(code):
     df_path = create_dfs_print_matrix(code)
@@ -403,4 +433,17 @@ def buildDFG(code):
     dfg_feature = create_node_features(df_path)
     adj[adj > 1] = 1.
     return adj, dfg_feature
+
+def preprocess_features_e(features):
+    max_length = max([f.shape[0] for f in features])  # 最大节点数
+
+    for i in range(len(features)):
+        feature = np.array(features[i])
+        N, _, D = feature.shape
+        pad = max_length - N
+        # 填充行和列
+        feature = np.pad(feature, ((0, pad), (0, pad), (0, 0)), mode='constant')
+        features[i] = feature
+
+    return np.array(features)
 
