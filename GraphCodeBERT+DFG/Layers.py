@@ -192,7 +192,7 @@ class GraphEmbedding(nn.Module):
         super(GraphEmbedding, self).__init__()
         #self.gnn = GraphConvolution(feature_dim_size, hidden_size, dropout, act=act)
         # self.graphAtt = GraphAttentionLayer(feature_dim_size, hidden_size, dropout=dropout, concat=True)
-        self.graphAttv2 = GraphAttentionV2Layer(feature_dim_size, hidden_size, n_heads=1, is_concat=True, dropout=0.1, leaky_relu_negative_slope=0.2, share_weights=False)
+        self.graphAttv2 = GraphAttentionV2Layer(feature_dim_size, hidden_size, n_heads=1, edge_features=768, is_concat=True, dropout=0.1, leaky_relu_negative_slope=0.2, share_weights=False)
         self.out_dim = hidden_size
         self.soft_att = nn.Linear(hidden_size, 1).double()
         self.posEmb = SinusoidalPositionalEmbedding()
